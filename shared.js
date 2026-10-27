@@ -262,6 +262,7 @@ function onSearchInput() {
       proses:  { l: 'Dalam Tindakan', c: 'st-prog' },
       selesai: { l: 'Selesai', c: 'st-done' }
     };
+    const AUTO_NOTE = { baru: 'Tiada Tindakan', proses: 'Sedang dibaiki', selesai: 'Selesai' };
     let defFilter = 'aktif';
     const todayStr = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
 

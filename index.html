@@ -80,6 +80,7 @@
       if (!e) return;
       if (status === 'selesai' && !e.gambarTindakan && !confirm('Tiada gambar bukti tindakan. Tandakan selesai tanpa gambar?')) { afterDefectChange(id); return; }
       e.tindakan = status;
+      e.catatanTindakan = AUTO_NOTE[status] || '';
       if (status === 'proses' && !e.tarikhTindakan) e.tarikhTindakan = todayStr();
       if (status === 'selesai') e.tarikhSelesai = todayStr(); else delete e.tarikhSelesai;
       afterDefectChange(id);
@@ -134,7 +135,7 @@
           <div class="def-meta">Dilaporkan: ${d.e.tarikh || '-'} • ${daysOpen(d.e)}${d.e.catatan ? '<br>' + escapeHTML(d.e.catatan) : ''}</div>
           <div class="def-fields">
             <input type="text" value="${escapeHTML(d.e.pihak || '')}" placeholder="Pihak bertindak / kontraktor" maxlength="60" onchange="setDefectField(${k}, 'pihak', this.value)">
-            <input type="text" value="${escapeHTML(d.e.catatanTindakan || '')}" placeholder="Nota tindakan" maxlength="150" onchange="setDefectField(${k}, 'catatanTindakan', this.value)">
+            <input type="text" value="${escapeHTML(d.e.catatanTindakan || AUTO_NOTE[st])}" placeholder="Nota tindakan" maxlength="150" onchange="setDefectField(${k}, 'catatanTindakan', this.value)">
           </div>
           ${evidenceBlock(d.item.id, d.di, d.chk.key, d.e)}
           <div class="def-actions">${btns}<a class="btn" style="text-decoration:none;" href="${MAIN_URL}?open=${encodeURIComponent(d.item.id)}">Butiran bangunan</a></div>
