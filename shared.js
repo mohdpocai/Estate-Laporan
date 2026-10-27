@@ -1,4 +1,6 @@
 /* Shared core for the Laporan site (Kerosakan + Ringkasan): Firebase, login, layouts, photos. */
+function toggleNavDd(ev) { ev.stopPropagation(); document.getElementById('navDdMenu').classList.toggle('open'); }
+document.addEventListener('click', () => { const m = document.getElementById('navDdMenu'); if (m) m.classList.remove('open'); });
 const MAIN_URL = 'https://mohdpocai.github.io/Estate-Perumahan/';
 document.querySelectorAll('a[data-main]').forEach(a => { a.href = MAIN_URL + a.getAttribute('data-main'); });
     const firebaseConfig = {

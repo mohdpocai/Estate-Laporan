@@ -38,12 +38,17 @@
     <header id="app-header">
       <div class="brand"><span class="logo">LP2</span><span class="brand-text">Pengurusan Rumah Pekerja</span></div>
       <select id="layoutSelect" onchange="changeLayout(this.value)" title="Pilih layout"></select>
-      <nav class="view-tabs">
-        <a class="view-tab" data-main="#list" href="#">Senarai</a>
-        <a class="view-tab" data-main="#map" href="#">Pelan</a>
-        <a class="view-tab active" href="./">Kerosakan <span class="tab-count" id="defectCount">0</span></a>
-        <a class="view-tab" href="ringkasan.html">Ringkasan</a>
-      </nav>
+      <div class="nav-dd">
+        <button class="nav-dd-btn" onclick="toggleNavDd(event)"><span>⚠️ Kerosakan</span> ▾</button>
+        <div class="nav-dd-menu" id="navDdMenu">
+          <a class="active" href="./">⚠️ Kerosakan <span class="tab-count" id="defectCount">0</span></a>
+          <a href="ringkasan.html">📊 Ringkasan</a>
+          <hr>
+          <div class="dd-sub">Pengurusan rumah</div>
+          <a data-main="#list" href="#">📋 Senarai ↗</a>
+          <a data-main="#map" href="#">🗺️ Pelan ↗</a>
+        </div>
+      </div>
       <input type="text" id="headerSearch" placeholder="Cari pekerja, bangunan atau kerosakan..." oninput="onSearchInput()">
       <span id="syncStatus">...</span>
       <button class="icon-btn" onclick="doLogout()" title="Log Keluar">⎋</button>

@@ -158,3 +158,14 @@ input:focus,select:focus{outline:2px solid rgba(29,111,184,.35);border-color:var
 a.view-tab{text-decoration:none}
 .page-view,#defectView.page-view,#summaryView.page-view{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative}
 .icon-btn{display:inline-flex;align-items:center;justify-content:center}
+
+/* header page dropdown */
+.nav-dd{position:relative;flex-shrink:0}
+.nav-dd-btn{background:#fff;color:var(--nav);border:0;border-radius:9px;padding:8px 14px;font-weight:700;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px;font-family:inherit}
+.nav-dd-menu{display:none;position:absolute;left:0;top:42px;background:#fff;color:var(--ink);border-radius:10px;box-shadow:0 10px 30px rgba(15,23,42,.25);min-width:210px;padding:6px;z-index:500}
+.nav-dd-menu.open{display:block}
+.nav-dd-menu button,.nav-dd-menu a{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;text-align:left;background:none;border:0;padding:11px 12px;border-radius:7px;font-size:14px;cursor:pointer;color:var(--ink);text-decoration:none;font-family:inherit}
+.nav-dd-menu button:hover,.nav-dd-menu a:hover{background:var(--bg)}
+.nav-dd-menu .active{background:#EAF2FB;color:var(--brand);font-weight:700}
+.nav-dd-menu hr{border:0;border-top:1px solid var(--line);margin:4px 0}
+.nav-dd-menu .dd-sub{font-size:11px;color:var(--mut);padding:6px 12px 2px;text-transform:uppercase;letter-spacing:.4px}
