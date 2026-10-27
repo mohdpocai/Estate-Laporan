@@ -63,8 +63,87 @@ function createDefaultDoor() {
   return { label: '', nama: '', jumlah: '1', checklist: {}, defects: {} };
 }
 
+    /* ===================== DEFECT RECORDS (permanent log) =====================
+       Every defect report is mirrored into layouts/<layout>/defectLog/<id>. Records are never removed
+       automatically (unticking, deleting a door/building, completing or repeating a defect all keep them);
+       they are deleted only with the Padam rekod button on the Kerosakan page. */
+    let defectLog = {};
+    let lastLogJson = {};
+    let logLoaded = false;
+    let listeningLogLayoutId = null;
+
+    function stableJson(o) { return JSON.stringify(Object.keys(o).sort().reduce((a, k) => { a[k] = o[k]; return a; }, {})); }
+    function recordCore(r) { const c = Object.assign({}, r); delete c.dicipta; delete c.dikemaskini; return c; }
+    function legacyLogId(item, di, key) { return 'L' + item.id + '_' + (di + 1) + '_' + key; }
+    function entryLogId(item, di, key, e) { return e.logId || legacyLogId(item, di, key); }
+
+    function defectSnapshot(d) {
+      const { item, door, di, chk, e } = d;
+      const photo = g => (g && !String(g).startsWith('data:')) ? g : '';
+      return {
+        id: entryLogId(item, di, chk.key, e), itemId: item.id, di: di, key: chk.key, label: chk.label,
+        building: item.name || (CATEGORY_CONFIG[item.category] || {}).label || 'Elemen',
+        category: item.category || '',
+        door: door ? (door.label && door.label.trim() ? door.label.trim() : 'Pintu ' + (di + 1)) : '',
+        penghuni: door && door.nama ? String(door.nama).trim() : '',
+        tarikh: e.tarikh || '', tindakan: defStatus(e),
+        catatan: e.catatan || '', pihak: e.pihak || '', catatanTindakan: e.catatanTindakan || '',
+        tarikhTindakan: e.tarikhTindakan || '', tarikhSelesai: e.tarikhSelesai || '',
+        gambar: photo(e.gambar), gambarTindakan: photo(e.gambarTindakan)
+      };
+    }
+
+    function ensureLogIds() {
+      allDefects().forEach(d => {
+        if (d.e.logId) return;
+        const legacy = legacyLogId(d.item, d.di, d.chk.key);
+        d.e.logId = defectLog[legacy] ? 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) : legacy;
+      });
+    }
+
+    function defectLogUpdates() {
+      const out = {};
+      const base = 'layouts/' + currentLayoutId + '/defectLog/';
+      const now = new Date().toISOString();
+      allDefects().forEach(d => {
+        const snap = defectSnapshot(d);
+        const json = stableJson(snap);
+        if (lastLogJson[snap.id] === json) return;
+        const old = defectLog[snap.id];
+        out[base + snap.id] = Object.assign({}, snap, { dicipta: (old && old.dicipta) || now, dikemaskini: now });
+        lastLogJson[snap.id] = json;
+      });
+      return out;
+    }
+
+    function backfillLog() {
+      if (logLoaded && allDefects().some(d => !d.e.logId)) saveToStorage();
+    }
+
+    function attachLogListener() {
+      if (listeningLogLayoutId && db) db.ref('layouts/' + listeningLogLayoutId + '/defectLog').off();
+      listeningLogLayoutId = currentLayoutId;
+      defectLog = {}; lastLogJson = {}; logLoaded = false;
+      const layoutAtStart = currentLayoutId;
+      db.ref('layouts/' + currentLayoutId + '/defectLog').on('value', snap => {
+        if (layoutAtStart !== currentLayoutId) return;
+        defectLog = snap.val() || {};
+        lastLogJson = {};
+        Object.keys(defectLog).forEach(id => { lastLogJson[id] = stableJson(recordCore(defectLog[id])); });
+        logLoaded = true;
+        backfillLog();
+        if (typeof onLogChanged === 'function') onLogChanged();
+      }, err => console.error('defectLog: ' + err.message));
+    }
+
+    function detachLogListener() {
+      if (db && listeningLogLayoutId) db.ref('layouts/' + listeningLogLayoutId + '/defectLog').off();
+      listeningLogLayoutId = null; defectLog = {}; lastLogJson = {}; logLoaded = false;
+    }
+
     function saveToStorage() {
       if (!dbReady || !currentLayoutId) return;
+      if (logLoaded) ensureLogIds();
       const updates = {};
       const currentIds = new Set();
       elements.forEach(el => {
@@ -81,6 +160,7 @@ function createDefaultDoor() {
           delete lastSaved[id];
         }
       });
+      if (logLoaded) Object.assign(updates, defectLogUpdates());
       if (Object.keys(updates).length) {
         db.ref().update(updates).catch(err => alert('Gagal simpan ke Firebase: ' + err.message));
       }
@@ -197,6 +277,7 @@ function startCloudSync() {
 function attachElementsListener() {
   if (listeningLayoutId) db.ref('layouts/' + listeningLayoutId + '/elements').off();
   listeningLayoutId = currentLayoutId;
+  attachLogListener();
   elements = []; lastSaved = {};
   renderPage();
   db.ref('layouts/' + currentLayoutId + '/elements').on('value', snap => {
@@ -204,6 +285,7 @@ function attachElementsListener() {
     elements = Object.keys(val).map(k => normalizeElement(val[k])).sort((a, b) => idTime(a.id) - idTime(b.id));
     lastSaved = {};
     elements.forEach(e => { lastSaved[e.id] = JSON.stringify(e); });
+    backfillLog();
     renderPage();
   }, err => alert('Tiada kebenaran membaca data: ' + err.message));
 }
@@ -214,6 +296,7 @@ function stopCloudSync() {
     db.ref('layoutNames').off();
     if (listeningLayoutId) db.ref('layouts/' + listeningLayoutId + '/elements').off();
   }
+  detachLogListener();
   dbReady = false;
   listeningLayoutId = null;
   layouts = {};
@@ -302,6 +385,7 @@ function updateDefectBadge() {
   const b = document.getElementById('defectCount');
   if (b) { b.textContent = n; b.style.display = n ? 'inline-block' : 'none'; }
 }
+function onLogChanged() { if (typeof renderPage === 'function') renderPage(); }
 function afterDefectChange() {
   saveToStorage();
   renderPage();

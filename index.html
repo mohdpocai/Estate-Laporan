@@ -99,46 +99,114 @@
       return e.tarikhSelesai ? `Selesai dalam ${d} hari` : `${d} hari dibuka`;
     }
 
+    /* ===================== RECORDS (permanent) ===================== */
+    function findLive(r) {
+      const item = elements.find(x => x.id === r.itemId);
+      if (!item) return { item: null, holder: null, entry: null };
+      const holder = r.di === -1 ? item : (item.doors || [])[r.di];
+      const entry = holder && holder.defects && holder.defects[r.key];
+      return { item, holder, entry: entry && entryLogId(item, r.di, r.key, entry) === r.id ? entry : null };
+    }
+
+    function allRecords() {
+      const recs = Object.assign({}, defectLog);
+      // defects not yet written to the log (just reported / not yet backfilled) are still shown
+      allDefects().forEach(d => { const snap = defectSnapshot(d); if (!recs[snap.id]) recs[snap.id] = snap; });
+      return Object.keys(recs).map(id => Object.assign({ id }, recs[id]));
+    }
+
+    function recordVM(r) {
+      const live = findLive(r);
+      const active = !!(live.entry && live.entry.status);
+      const e = active ? live.entry : r;
+      const st = active ? defStatus(live.entry) : (DEF_STATUS[r.tindakan] ? r.tindakan : 'baru');
+      const gone = !live.item || (r.di !== -1 && !live.holder);
+      const why = active ? '' : (gone ? 'Bangunan / pintu telah dibuang' : 'Telah dinyahtanda daripada bangunan');
+      const cat = (!active && st !== 'selesai') ? 'tidakaktif' : st;
+      const where = r.door
+        ? `${escapeHTML(r.building || 'Bangunan')} • ${escapeHTML(r.door)}${r.penghuni ? ' • ' + escapeHTML(r.penghuni) : ''}`
+        : escapeHTML(r.building || 'Elemen');
+      return { r, e, st, active, why, cat, where };
+    }
+
+    function deleteDefectRecord(id) {
+      const r = allRecords().find(x => x.id === id);
+      if (!r) return;
+      const live = findLive(r);
+      const active = !!(live.entry && live.entry.status);
+      const msg = active
+        ? 'Padam rekod kerosakan ini secara kekal?\n\nKerosakan ini juga akan dibuang daripada bangunan. Tindakan ini tidak boleh dibatalkan.'
+        : 'Padam rekod kerosakan ini secara kekal?\n\nTindakan ini tidak boleh dibatalkan.';
+      if (!confirm(msg)) return;
+      if (live.entry) delete live.holder.defects[r.key];
+      saveToStorage();                       // first take the defect off the building ...
+      [r.gambar, r.gambarTindakan].forEach(deletePhoto);
+      delete defectLog[id]; delete lastLogJson[id];
+      db.ref('layouts/' + currentLayoutId + '/defectLog/' + id).remove().catch(err => alert('Gagal padam rekod: ' + err.message));   // ... then remove the record
+      renderPage();
+    }
+
+    function photoThumb(g, cls) {
+      return g ? `<img class="${cls}" ${g.startsWith('data:') ? '' : `data-photo="${g}"`} src="${photoSrc(g)}">` : '';
+    }
+
     function renderDefects() {
-      const all = allDefects();
-      const cnt = k => all.filter(d => defStatus(d.e) === k).length;
       const q = searchQuery;
-      const list = all.filter(d => {
-        const st = defStatus(d.e);
-        if (defFilter === 'aktif' ? st === 'selesai' : (defFilter !== 'semua' && st !== defFilter)) return false;
+      const vms = allRecords().map(recordVM);
+      const cnt = k => vms.filter(v => v.cat === k).length;
+      const list = vms.filter(v => {
+        if (defFilter === 'aktif') { if (v.cat !== 'baru' && v.cat !== 'proses') return false; }
+        else if (defFilter !== 'semua' && v.cat !== defFilter) return false;
         if (!q) return true;
-        return [d.item.name, d.door && d.door.nama, d.door && d.door.label, d.chk.label, d.e.catatan, d.e.pihak].some(t => t && String(t).toLowerCase().includes(q));
-      }).sort((a, b) => (a.e.tarikh || '').localeCompare(b.e.tarikh || ''));
+        return [v.r.building, v.r.door, v.r.penghuni, v.r.label, v.e.catatan, v.e.pihak, v.e.catatanTindakan].some(t => t && String(t).toLowerCase().includes(q));
+      }).sort((a, b) => (b.e.tarikh || '').localeCompare(a.e.tarikh || ''));
 
       const sc = (k, label, n) => `<div class="sum-card ${defFilter === k ? 'on' : ''}" onclick="setDefFilter('${k}')"><b>${n}</b><span>${label}</span></div>`;
       let html = `<div class="sum-row">${sc('baru', 'Baharu — perlu tindakan', cnt('baru'))}${sc('proses', 'Dalam tindakan', cnt('proses'))}${sc('selesai', 'Selesai', cnt('selesai'))}</div>
         <div class="filter-bar" style="padding:0 0 12px;background:none;border:0;">
           <button class="filter-chip ${defFilter === 'aktif' ? 'active' : ''}" onclick="setDefFilter('aktif')">Belum selesai</button>
-          <button class="filter-chip ${defFilter === 'semua' ? 'active' : ''}" onclick="setDefFilter('semua')">Semua rekod</button>
+          <button class="filter-chip ${defFilter === 'semua' ? 'active' : ''}" onclick="setDefFilter('semua')">Semua rekod (${vms.length})</button>
+          <button class="filter-chip ${defFilter === 'tidakaktif' ? 'active' : ''}" onclick="setDefFilter('tidakaktif')">Tidak aktif (${cnt('tidakaktif')})</button>
         </div>`;
-      if (!list.length) html += `<div class="empty-state">Tiada kerosakan dalam paparan ini. 🎉</div>`;
-      html += list.map(d => {
-        const st = defStatus(d.e), S = DEF_STATUS[st];
-        const where = d.door ? `${escapeHTML(d.item.name || 'Bangunan')} • ${escapeHTML(d.door.label || 'Pintu ' + (d.di + 1))}${d.door.nama ? ' • ' + escapeHTML(d.door.nama) : ''}` : `${escapeHTML(d.item.name || (CATEGORY_CONFIG[d.item.category] || {}).label || 'Elemen')} • ${escapeHTML((CATEGORY_CONFIG[d.item.category] || {}).label || '')}`;
-        const k = `'${d.item.id}', ${d.di}, '${d.chk.key}'`;
+      if (!list.length) html += `<div class="empty-state">Tiada rekod kerosakan dalam paparan ini. 🎉</div>`;
+      html += list.map(v => {
+        const { r, e, st, active, why, where } = v, S = DEF_STATUS[st];
+        const k = `'${r.itemId}', ${r.di}, '${r.key}'`;
+        const del = `<button class="btn" style="color:var(--bad);" onclick="deleteDefectRecord('${r.id}')">🗑️ Padam rekod</button>`;
+        const meta = `Dilaporkan: ${e.tarikh || '-'} • ${daysOpen(e)}${e.catatan ? '<br>' + escapeHTML(e.catatan) : ''}`;
+        if (!active) {
+          return `<div class="def-card ${S.c}">
+            <div class="def-top">
+              <div style="display:flex;gap:12px;">
+                ${photoThumb(e.gambar, 'def-thumb')}
+                <div><div class="def-title">${escapeHTML(r.label)}</div><div class="def-loc">${where}</div></div>
+              </div>
+              <div style="text-align:right;"><span class="badge ${S.c}">${S.l}</span></div>
+            </div>
+            <div class="def-meta">${meta}<br><span style="color:var(--warn);font-weight:600;">⚠ ${why}</span></div>
+            ${(e.pihak || e.catatanTindakan) ? `<div class="def-meta">${e.pihak ? '👷 ' + escapeHTML(e.pihak) : ''}${e.pihak && e.catatanTindakan ? ' • ' : ''}${e.catatanTindakan ? '📝 ' + escapeHTML(e.catatanTindakan) : ''}</div>` : ''}
+            ${e.gambarTindakan ? `<div class="def-meta">Bukti tindakan:<br>${photoThumb(e.gambarTindakan, 'def-thumb')}</div>` : ''}
+            <div class="def-actions">${del}</div>
+          </div>`;
+        }
         const btns = st === 'baru' ? `<button class="btn pri" onclick="setDefectAction(${k}, 'proses')">▶ Mula Tindakan</button><button class="btn ok" onclick="setDefectAction(${k}, 'selesai')">✔ Selesai</button>`
           : st === 'proses' ? `<button class="btn ok" onclick="setDefectAction(${k}, 'selesai')">✔ Tandakan Selesai</button>`
           : `<button class="btn" onclick="setDefectAction(${k}, 'baru')">↺ Buka Semula</button>`;
         return `<div class="def-card ${S.c}">
           <div class="def-top">
             <div style="display:flex;gap:12px;">
-              ${d.e.gambar ? `<img class="def-thumb" ${d.e.gambar.startsWith('data:') ? '' : `data-photo="${d.e.gambar}"`} src="${photoSrc(d.e.gambar)}">` : ''}
-              <div><div class="def-title">${d.chk.label}</div><div class="def-loc">${where}</div></div>
+              ${photoThumb(e.gambar, 'def-thumb')}
+              <div><div class="def-title">${escapeHTML(r.label)}</div><div class="def-loc">${where}</div></div>
             </div>
             <span class="badge ${S.c}">${S.l}</span>
           </div>
-          <div class="def-meta">Dilaporkan: ${d.e.tarikh || '-'} • ${daysOpen(d.e)}${d.e.catatan ? '<br>' + escapeHTML(d.e.catatan) : ''}</div>
+          <div class="def-meta">${meta}</div>
           <div class="def-fields">
-            <input type="text" value="${escapeHTML(d.e.pihak || '')}" placeholder="Pihak bertindak / kontraktor" maxlength="60" onchange="setDefectField(${k}, 'pihak', this.value)">
-            <input type="text" value="${escapeHTML(d.e.catatanTindakan || AUTO_NOTE[st])}" placeholder="Nota tindakan" maxlength="150" onchange="setDefectField(${k}, 'catatanTindakan', this.value)">
+            <input type="text" value="${escapeHTML(e.pihak || '')}" placeholder="Pihak bertindak / kontraktor" maxlength="60" onchange="setDefectField(${k}, 'pihak', this.value)">
+            <input type="text" value="${escapeHTML(e.catatanTindakan || AUTO_NOTE[st])}" placeholder="Nota tindakan" maxlength="150" onchange="setDefectField(${k}, 'catatanTindakan', this.value)">
           </div>
-          ${evidenceBlock(d.item.id, d.di, d.chk.key, d.e)}
-          <div class="def-actions">${btns}<a class="btn" style="text-decoration:none;" href="${MAIN_URL}?open=${encodeURIComponent(d.item.id)}">Butiran bangunan</a></div>
+          ${evidenceBlock(r.itemId, r.di, r.key, e)}
+          <div class="def-actions">${btns}<a class="btn" style="text-decoration:none;" href="${MAIN_URL}?open=${encodeURIComponent(r.itemId)}">Butiran bangunan</a>${del}</div>
         </div>`;
       }).join('');
       document.getElementById('defectScroll').innerHTML = html;
